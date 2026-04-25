@@ -1,0 +1,119 @@
+# 한국 시즌/이벤트 키워드 시드 사전
+# Naver DataLab API 호출 시 시드 키워드 그룹으로 사용
+
+seasons:
+  spring:
+    months: [3, 4, 5]
+    weeks: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+    keywords:
+      - 벚꽃
+      - 봄나들이
+      - 입학
+      - 졸업
+      - 신학기
+      - 미세먼지
+      - 황사
+      - 어린이날
+      - 어버이날
+      - 스승의날
+
+  summer:
+    months: [6, 7, 8]
+    weeks: [23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35]
+    keywords:
+      - 폭염
+      - 온열질환
+      - 장마
+      - 태풍
+      - 여름휴가
+      - 해수욕장
+      - 캠핑
+      - 여름방학
+      - 시즌오프
+      - 쿨링쉘터
+
+  autumn:
+    months: [9, 10, 11]
+    weeks: [36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]
+    keywords:
+      - 단풍
+      - 추석
+      - 한가위
+      - 할로윈
+      - 가을소풍
+      - 독서의달
+      - 수능
+      - 취업준비
+      - 이사철
+
+  winter:
+    months: [12, 1, 2]
+    weeks: [49, 50, 51, 52, 1, 2, 3, 4, 5, 6, 7, 8]
+    keywords:
+      - 한파
+      - 눈
+      - 크리스마스
+      - 연말
+      - 신년
+      - 설날
+      - 발렌타인데이
+      - 연말정산
+      - 겨울방학
+
+shopping:
+  - keyword: 블랙프라이데이
+    months: [11]
+  - keyword: 사이버먼데이
+    months: [11]
+  - keyword: 명절선물
+    months: [1, 2, 9, 10]
+  - keyword: 시즌오프
+    months: [1, 7]
+  - keyword: 쇼핑몰할인
+    months: [1, 6, 11, 12]
+  - keyword: 기프티콘
+    months: [5, 12]
+  - keyword: 온라인쇼핑
+    months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+public_campaigns:
+  - keyword: 금연캠페인
+    months: [1, 5]
+  - keyword: 헌혈
+    months: [6, 7, 12]
+  - keyword: 보건소안내
+    months: [7, 8]
+  - keyword: 교통안전
+    months: [3, 9, 10]
+  - keyword: 재난안전
+    months: [6, 7, 8, 12]
+  - keyword: 환경캠페인
+    months: [4, 6]
+  - keyword: 에너지절약
+    months: [1, 7, 8]
+
+life_events:
+  - keyword: 결혼
+    months: [4, 5, 10, 11]
+  - keyword: 이사
+    months: [3, 4, 9, 10]
+  - keyword: 취업면접
+    months: [2, 3, 8, 9]
+  - keyword: 자격증시험
+    months: [3, 6, 9, 11]
+  - keyword: 여행
+    months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  - keyword: 개업
+    months: [3, 4, 9, 10]
+
+b2b_seasonal:
+  - keyword: 회사행사
+    months: [4, 5, 10, 11, 12]
+  - keyword: 워크샵
+    months: [3, 4, 9, 10]
+  - keyword: 기업홍보
+    months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  - keyword: 사내교육
+    months: [1, 7]
+  - keyword: 제품홍보배너
+    months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
