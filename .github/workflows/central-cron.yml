@@ -1,0 +1,86 @@
+name: Central Demand Cron
+
+on:
+  schedule:
+    # 매일 KST 03:00 (UTC 18:00)
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+    inputs:
+      target_week:
+        description: '특정 주차 실행 (예: 2026-W29). 비워두면 W+1~W+4 자동 실행.'
+        required: false
+        default: ''
+      market:
+        description: '마켓 코드 (default: KR)'
+        required: false
+        default: 'KR'
+      force:
+        description: '이미 카드가 충분해도 강제 실행 (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  generate-idea-cards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run idea card generation
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GOOGLE_AI_STUDIO_API_KEY }}
+          NAVER_DATALAB_CLIENT_ID: ${{ secrets.NAVER_DATALAB_CLIENT_ID }}
+          NAVER_DATALAB_CLIENT_SECRET: ${{ secrets.NAVER_DATALAB_CLIENT_SECRET }}
+          PINTEREST_ACCESS_TOKEN: ${{ secrets.PINTEREST_ACCESS_TOKEN }}
+          PINTEREST_REFRESH_TOKEN: ${{ secrets.PINTEREST_REFRESH_TOKEN }}
+          PINTEREST_CLIENT_ID: ${{ secrets.PINTEREST_CLIENT_ID }}
+          PINTEREST_CLIENT_SECRET: ${{ secrets.PINTEREST_CLIENT_SECRET }}
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_IDS: ${{ secrets.TELEGRAM_ADMIN_CHAT_IDS }}
+        run: |
+          MARKET="${{ github.event.inputs.market || 'KR' }}"
+          TARGET_WEEK="${{ github.event.inputs.target_week }}"
+          FORCE="${{ github.event.inputs.force || 'false' }}"
+
+          ARGS="--market $MARKET"
+
+          if [ -n "$TARGET_WEEK" ]; then
+            ARGS="$ARGS --target-week $TARGET_WEEK"
+          fi
+
+          if [ "$FORCE" = "true" ]; then
+            ARGS="$ARGS --force"
+          fi
+
+          uv run python -m central.run $ARGS
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_IDS: ${{ secrets.TELEGRAM_ADMIN_CHAT_IDS }}
+        run: |
+          CHAT_ID=$(echo "$TELEGRAM_ADMIN_CHAT_IDS" | cut -d',' -f1)
+          if [ -n "$CHAT_ID" ] && [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+            MSG="❌ Central Cron 실패%0A$(date '+%Y-%m-%d %H:%M UTC')%0Ahttps://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${CHAT_ID}&text=${MSG}"
+          fi
