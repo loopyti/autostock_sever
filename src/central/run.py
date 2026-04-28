@@ -152,7 +152,7 @@ def run_pipeline(
                 len(valid), len(raw_ideas), valid_ratio * 100, conditions[0] if conditions else "",
             )
             retry_ideas, _ = gemini_idea.retry_with_quality_suffix(
-                bundle, run_id, condition=conditions[0] if conditions else "", target_count=7,
+                bundle, run_id, condition=conditions[0] if conditions else "", target_count=10,
             )
             for it in retry_ideas:
                 it["_condition"] = conditions[0] if conditions else ""
