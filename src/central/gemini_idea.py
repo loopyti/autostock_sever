@@ -30,10 +30,16 @@ generation condition에 부합하는 "실제 디자인 발주 수요 카드"를 
 
 ━━━ STRICT RULES ━━━
 
+[RULE 0] 생성 수량
+- condition에 부합하는 카드를 최대한 많이 생성한다 (목표: 10개)
+- 품질이 담보되는 경우 10개 이상도 허용
+- quality < quantity: 수량 채우기 위해 condition 위반 카드를 넣는 것은 금지
+
 [RULE 1] Evidence 기반 필수
 - used_evidence는 반드시 입력 bundle에 있는 신호·근거만 참조한다
 - bundle에 없는 keyword / title / url을 만들어내는 것(hallucination) 금지
 - 허용 sources: calendar, naver_datalab, pinterest, google_grounding
+- grounding_evidences에 포함된 title/url은 반드시 우선 활용한다
 
 [RULE 2] buyer = 실제 발주 주체 (직업 또는 조직으로 구체화)
 허용:
@@ -216,7 +222,7 @@ def generate_idea_cards(
     bundle: dict,
     run_id: str,
     condition: str,
-    target_count: int = 7,
+    target_count: int = 10,
 ) -> tuple[list[dict], list]:
     """
     grounding 미사용. 반환 (ideas, []) — 두 번째는 하위 호환용 빈 리스트.
@@ -261,7 +267,7 @@ def retry_with_quality_suffix(
     run_id: str,
     *,
     condition: str,
-    target_count: int = 7,
+    target_count: int = 10,
 ) -> tuple[list[dict], list]:
     """valid 부족 시 동일 condition으로 품질 suffix 재시도."""
     _ = run_id

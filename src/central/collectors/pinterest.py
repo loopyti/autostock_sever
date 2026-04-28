@@ -30,6 +30,31 @@ _REGION = "US"
 _TOP_N = 50
 _TREND_TYPES: list[str] = ["growing", "monthly"]
 
+# 한국 B2B 스톡 이미지 수요와 무관한 개인취미 카테고리 키워드 — 번들에서 제외
+# nails/hair/recipes/crafts 등은 글로벌 소비자 트렌드이며 한국 디자인 발주 수요를 유발하지 않음
+_NOISE_SUBSTRINGS: frozenset[str] = frozenset({
+    "nail", "nails", "hair", "hairstyle", "hairstyles", "makeup", "recipe",
+    "recipes", "dinner", "lunch", "breakfast", "food", "cooking", "bake",
+    "baking", "craft", "crafts", "diy", "drawing", "doodle", "doodles",
+    "painting", "wallpaper", "aesthetic", "outfit", "outfits", "dress",
+    "prom", "braids", "braid", "braided", "poop", "chicken coop",
+    "sigil", "sigils", "ahh", "random ahh",
+})
+
+_NOISE_EXACT: frozenset[str] = frozenset({
+    "nails", "hair", "hairstyles", "makeup", "wallpaper", "aesthetic",
+    "outfit", "funny", "drawing ideas", "painting ideas", "pose reference",
+    "reaction pictures", "braids", "youtube",
+})
+
+
+def _is_noise(keyword: str) -> bool:
+    """한국 B2B 수요와 무관한 개인취미 키워드면 True."""
+    kw_lower = keyword.lower().strip()
+    if kw_lower in _NOISE_EXACT:
+        return True
+    return any(sub in kw_lower for sub in _NOISE_SUBSTRINGS)
+
 
 def _get_access_token() -> str:
     # settings에서 로드한 값 우선, 런타임 갱신된 값은 os.environ에 저장
@@ -153,6 +178,8 @@ def collect(target_week: str, market: str = "KR") -> list[dict[str, Any]]:
             for rank, item in enumerate(items, start=1):
                 kw = str(item.get("keyword") or item.get("name") or "").strip()
                 if not kw or kw in seen_kws:
+                    continue
+                if _is_noise(kw):
                     continue
                 seen_kws.add(kw)
                 results.append({

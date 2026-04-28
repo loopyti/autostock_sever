@@ -19,6 +19,31 @@ _API_URL = "https://openapi.naver.com/v1/datalab/search"
 _MAX_GROUPS = 5
 _MAX_KEYWORDS_PER_GROUP = 5
 
+# calendar와 독립적인 상업 수요 신호 키워드 그룹
+# — 한국 B2B 스톡 이미지 발주가 실제로 발생하는 영역들
+_INDEPENDENT_GROUPS: list[dict] = [
+    {
+        "groupName": "공공기관홍보",
+        "keywords": ["지자체 홍보", "공공기관 안내", "보건소 홍보", "행정안전부", "복지관"],
+    },
+    {
+        "groupName": "이커머스프로모션",
+        "keywords": ["온라인쇼핑 할인", "쇼핑몰 배너", "프로모션 배너", "상세페이지", "이벤트 배너"],
+    },
+    {
+        "groupName": "교육홍보",
+        "keywords": ["학원 모집", "학원 광고", "입학 홍보", "교육 안내", "수강 모집"],
+    },
+    {
+        "groupName": "외식업홍보",
+        "keywords": ["카페 홍보", "음식점 홍보", "프랜차이즈 홍보", "배달 이벤트", "맛집 홍보"],
+    },
+    {
+        "groupName": "이벤트행사",
+        "keywords": ["행사 홍보", "이벤트 포스터", "축제 홍보", "전시 홍보", "공연 홍보"],
+    },
+]
+
 
 def _iso_week_to_period(target_week: str) -> tuple[str, str]:
     """
@@ -53,13 +78,13 @@ def _build_keyword_groups(
 ) -> list[dict]:
     """
     DataLab API 키워드 그룹 빌드.
-    calendar 이벤트 키워드 + season 키워드를 합쳐 최대 5그룹으로 묶는다.
+    calendar 이벤트 키워드 + season 키워드를 합쳐 최대 2그룹으로 묶는다.
+    나머지 3슬롯은 독립 상업 수요 그룹으로 채운다.
     """
+    # calendar 기반 키워드 (최대 2그룹)
     all_keywords: list[str] = []
-
     for ev in calendar_events:
         all_keywords.extend(ev.get("keywords", []))
-
     all_keywords.extend(season_keywords)
 
     seen: set[str] = set()
@@ -69,14 +94,21 @@ def _build_keyword_groups(
             seen.add(kw)
             deduped.append(kw)
 
-    groups = []
+    cal_groups = []
     chunk_size = _MAX_KEYWORDS_PER_GROUP
-    for i in range(0, min(len(deduped), _MAX_GROUPS * chunk_size), chunk_size):
+    for i in range(0, min(len(deduped), 2 * chunk_size), chunk_size):
         chunk = deduped[i: i + chunk_size]
         if chunk:
-            groups.append({"groupName": f"group_{i // chunk_size + 1}", "keywords": chunk})
+            cal_groups.append({
+                "groupName": f"cal_group_{i // chunk_size + 1}",
+                "keywords": chunk,
+            })
 
-    return groups[:_MAX_GROUPS]
+    # 독립 상업 수요 그룹으로 나머지 슬롯 채우기
+    remaining = _MAX_GROUPS - len(cal_groups)
+    ind_groups = _INDEPENDENT_GROUPS[:remaining]
+
+    return (cal_groups + ind_groups)[:_MAX_GROUPS]
 
 
 def _call_datalab(groups: list[dict], start_date: str, end_date: str) -> dict:

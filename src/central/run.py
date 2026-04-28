@@ -130,7 +130,7 @@ def run_pipeline(
         raw_ideas: list[dict] = []
         for cond in conditions:
             ideas, _ = gemini_idea.generate_idea_cards(
-                bundle, run_id, condition=cond, target_count=7,
+                bundle, run_id, condition=cond,
             )
             for it in ideas:
                 it["_condition"] = cond
