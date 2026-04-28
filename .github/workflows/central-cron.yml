@@ -28,6 +28,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      # date.today()·주차 계산을 한국 날짜 기준으로 (로컬 맥과 UTC 크론 차이 완화)
+      TZ: Asia/Seoul
 
     steps:
       - name: Checkout

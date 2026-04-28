@@ -108,6 +108,14 @@ def run_pipeline(
         pin_signals = pin_collector.collect(target_week, market)
         logger.info(f"   → {len(pin_signals)}개 트렌드")
 
+        if not naver_signals and not pin_signals:
+            logger.warning(
+                "naver_datalab·pinterest 신호가 모두 비었습니다. "
+                "GitHub Actions 시크릿에 NAVER_DATALAB_* / PINTEREST_* 가 "
+                "로컬 .env와 동일하게 설정돼 있는지 확인하세요. "
+                "이 상태면 슬롯 키워드가 캘린더·evergreen 위주로만 잡힙니다."
+            )
+
         # ── 2. evidence bundle 빌드 + source_signals 저장 ─────────────────────
         logger.info("4/8 evidence bundle 빌드...")
         ev_module.save_signals(run_id, market, target_week, cal_signals, naver_signals, pin_signals)

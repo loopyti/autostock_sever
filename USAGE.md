@@ -108,6 +108,12 @@ uv run central-bot
 
 `/run`은 **기본 `CARDS_MIN_PER_WEEK`(30)** 규칙을 따른다. 이미 카드가 많으면 `skipped` 될 수 있음 — 강제 실행은 CLI에서 `--force`.
 
+### GitHub Actions 크론과 로컬 차이
+
+- **시크릿**: 로컬 `.env`에 있는 `NAVER_DATALAB_*`, `PINTEREST_*`, `DATA_GO_KR_API_KEY` 등을 **저장소 Secrets에도** 넣지 않으면 Actions에서는 수집이 비고, 번들이 얇아져 **evergreen·시즌 키워드만 반복**되는 것처럼 보일 수 있다.
+- **타임존**: 워크플로에 `TZ=Asia/Seoul`을 두어 `date.today()` 기반 주차(`W+1~W+4`)가 한국 날짜에 맞추도록 했다.
+- **기준일**: 크론은 `--target-date` 없이 돌면 주차별 **월요일**이 `target_date`로 잡힌다. 로컬에서 특정 기념일(예: 8/15)을 쓰려면 `workflow_dispatch`로 `target_week`를 주거나, 로컬처럼 CLI에 `--target-date`를 붙이는 스텝을 추가하면 된다.
+
 ### GitHub Actions와의 관계
 
 [`.github/workflows/central-cron.yml`](.github/workflows/central-cron.yml)은 **실패 시** `curl`로 텔레그램에 한 줄 알림만 보낸다. 일상적인 생성 트리거는 이 워크플로 또는 위 CLI·봇 `/run` 중 택일하면 된다.
