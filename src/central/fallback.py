@@ -2,7 +2,7 @@
 fallback.py: valid 카드가 0개일 때만 최소 보충용으로 사용.
 - status='fallback_review' 로 저장 (pending 아님)
 - idea_title에 "{keyword} 관련" 패턴 금지
-- source_summary에 "수요 기반 fallback 생성" 문구 금지
+- 수요 방향 카드: 최종 포맷(배너/포스터 등) 단어 없이 활동 맥락·추상 asset 방향만
 """
 from __future__ import annotations
 
@@ -14,39 +14,39 @@ logger = logging.getLogger(__name__)
 _CATEGORY_TEMPLATES: list[dict] = [
     {
         "type": "holiday",
-        "buyer": "소상공인 자영업자",
-        "use_case": "명절·기념일 프로모션 배너 / SNS 광고",
-        "intent": "promotional_banner",
+        "buyer": "소상공인 자영업자, 동네 카페 사장, 학교 교사",
+        "use_case": "명절 소비 자극 커뮤니케이션, 가족·선물 토픽",
+        "intent": "seasonal_gift_demand",
         "industry": "ecommerce",
         "date_specificity": "high",
-        "asset_hints": ["gift box ribbon", "holiday table flat lay", "sale badge graphic"],
+        "asset_hints": ["gift giving", "holiday season", "family gathering"],
     },
     {
         "type": "shopping",
-        "buyer": "온라인 쇼핑몰 MD",
-        "use_case": "시즌 세일 메인 배너 / 카테고리 상단 배너",
-        "intent": "promotional_banner",
+        "buyer": "온라인 쇼핑몰 MD, 오픈마켓 판매자",
+        "use_case": "시즌말 재고 압박, 소비 자극 시각자료",
+        "intent": "seasonal_inventory_demand",
         "industry": "ecommerce",
         "date_specificity": "high",
-        "asset_hints": ["shopping bag mockup", "percent discount tag", "summer sale typography"],
+        "asset_hints": ["discount urgency", "seasonal retail", "clearance mood"],
     },
     {
         "type": "public_campaigns",
-        "buyer": "지자체·공공기관 홍보 담당자",
-        "use_case": "공공 캠페인 안내 포스터 / 카드뉴스",
-        "intent": "public_health_campaign",
+        "buyer": "지자체·공공기관 홍보 담당자, 보건소 담당자",
+        "use_case": "시민 안전·보건 리스크 커뮤니케이션, 계절성 공공토픽",
+        "intent": "public_seasonal_risk_demand",
         "industry": "government_public",
         "date_specificity": "medium",
-        "asset_hints": ["city hall silhouette", "infographic icons", "public notice layout"],
+        "asset_hints": ["public safety", "seasonal health risk", "civic seasonal messaging"],
     },
     {
         "type": "season",
-        "buyer": "학원·교육기관 원장",
-        "use_case": "방학·학기 특강 모집 배너 / 현수막",
-        "intent": "education_promotion",
+        "buyer": "학원·교육기관 원장, 교육기업 마케터",
+        "use_case": "방학·학기 전환기 모집·학습 토픽, 학부모 대상 정보",
+        "intent": "education_season_demand",
         "industry": "education",
         "date_specificity": "medium",
-        "asset_hints": ["classroom chalkboard", "student silhouette", "registration CTA banner"],
+        "asset_hints": ["academic calendar", "student life", "enrollment season"],
     },
 ]
 
@@ -87,8 +87,7 @@ def rule_based_generation(
         if len(all_keywords) < 2:
             continue
 
-        # "{keyword} 관련 ~" 패턴 대신 구체적 제목 조합
-        idea_title = f"{event_name} {template['use_case']}"
+        idea_title = f"{event_name} 시기 콘텐츠 수요"
 
         if len(idea_title.replace(" ", "")) < 8:
             continue
@@ -104,11 +103,14 @@ def rule_based_generation(
             "idea_title": idea_title,
             "buyer": template["buyer"],
             "use_case": template["use_case"],
-            "reason": f"{event_name} 시기에 {template['buyer']}가 {template['use_case']} 제작",
+            "reason": (
+                f"{event_name} 시기에 {template['buyer']} 쪽에서 "
+                f"{template['use_case']} 방향의 시각·토픽 수요가 생길 수 있다."
+            ),
             "intent": template["intent"],
             "source_keywords": all_keywords,
             "source_summary": f"{event_name} 시기 신호 기반 최소 보충 카드",
-            "asset_hints": list(template.get("asset_hints") or [event_name, "banner layout", "icon set"]),
+            "asset_hints": list(template.get("asset_hints") or [event_name, "seasonal topic", "visual direction"]),
             "used_evidence": used_evidence,
             "event_date": event_date,
             "lead_start_days": 7,

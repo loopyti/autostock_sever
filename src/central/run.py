@@ -194,6 +194,7 @@ def run_pipeline(
         logger.info("8/8 idea_cards 저장...")
         for card in valid:
             card.pop("_condition", None)
+            card.pop("thinking", None)
 
         # 메인 카드 저장
         inserted, skipped = db.upsert_idea_cards(run_id, valid, market, target_week, target_date)
@@ -204,6 +205,7 @@ def run_pipeline(
             for card in fb_cards:
                 card.pop("_condition", None)
                 card.pop("_fallback_status", None)
+                card.pop("thinking", None)
             fb_inserted, _ = db.upsert_idea_cards(
                 run_id, fb_cards, market, target_week, target_date,
                 override_status="fallback_review",

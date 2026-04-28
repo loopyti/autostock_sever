@@ -16,13 +16,18 @@ from central.settings import GOOGLE_AI_STUDIO_API_KEY
 logger = logging.getLogger(__name__)
 
 _DEFAULT_CONDITIONS: list[str] = [
-    "공공기관 중심",
-    "상업 광고 중심",
-    "이벤트·행사 중심",
+    "연례 시즌 소비·선물 수요",
+    "시즌말 상업 재고 압박 수요",
+    "계절 전환기 보건·환경 리스크 수요",
 ]
 
 _ABSTRACT_SUBSTRINGS: frozenset[str] = frozenset({
     "콘텐츠", "마케팅", "일반", "기타",
+})
+
+# 넓은 카테고리·결과물 암시 라벨 금지 (시기×토픽 niche 수요만)
+_BROAD_LABEL_SUBSTRINGS: frozenset[str] = frozenset({
+    "프로모션", "캠페인", "안내", "홍보", "광고",
 })
 
 _MAX_LABEL_LEN = 40
@@ -30,24 +35,26 @@ _MAX_LABEL_LEN = 40
 _CONDITIONS_PROMPT = """너는 스톡 이미지 시장 수요 분석가다.
 
 TASK:
-입력된 evidence bundle(calendar / naver_datalab / pinterest)을 분석해,
-이번 주차의 디자인 발주 수요를 서로 다른 "수요 영역"으로 분리하는 짧은 한국어 라벨을 정확히 3개 출력하라.
+입력된 evidence bundle(calendar / naver_datalab / pinterest / grounding_evidences)을 분석해,
+이번 주차에 서로 다른 "시기 × 토픽 결합 niche 수요"를 나타내는 한국어 라벨을 정확히 3개 출력하라.
+각 라벨은 Phase1에 넘길 generation condition으로만 쓰이며 DB에 저장되지 않는다.
 
 핵심 원칙:
-1. "수요 영역" 기준으로 분리한다
-   좋은 예: 공공안전 캠페인 / 상업 리테일 프로모션 / 교육·학원 홍보 / 이벤트·행사 홍보 / 의료·보건 안내 / 지역 상권 홍보
-2. buyer 이름·직업으로 나누는 것은 금지
-   금지: "병원 원장 대상", "학원 원장 대상", "쇼핑몰 MD 대상" — 이건 buyer, 영역이 아님
-3. 동일 상업 영역 안에서 buyer만 다르게 나누는 것 금지
-   금지 예: ["쇼핑몰 광고", "브랜드 배너", "이커머스 프로모"] → 셋 다 상업 영역, 의미 없는 분리
+1. 라벨은 반드시 "…수요"로 끝낸다 (예: 폭염기 취약계층 생활 안전 수요).
+2. 넓은 카테고리·결과물 암시 라벨 금지
+   나쁜 예: 시즌 상업 프로모션, 공공 안내, 환경·보건 캠페인, 명절 홍보, SNS 광고
+   좋은 예: 폭염 취약계층 생활 안전 수요, 하반기 채용 준비 자료 수요, 여름 재고 소진 소비 자극 수요
+3. 라벨에 포함 금지 단어(부분 일치도 금지): 프로모션, 캠페인, 안내, 홍보, 광고
 4. 라벨에 포함 금지 단어: 콘텐츠, 마케팅, 일반, 기타
-5. 각 라벨은 40자 이하, 짧고 명확하게
+5. buyer 이름·직업으로 나누는 것 금지
+   금지: "병원 원장 대상", "학원 원장 대상", "쇼핑몰 MD 대상"
+6. 동일 상업 토픽 안에서 표현만 다르게 나누는 것 금지
+7. 각 라벨 40자 이하, 짧고 구체적으로 (시기 또는 이벤트 + 구체 토픽 + 수요)
 
-Few-shot 예시 (참고용 — 신호가 다르면 다른 라벨을 만들어야 함, 그대로 복사 금지):
-- [2026-W29 여름·폭염·장마] → ["공공 안전·보건 캠페인", "여름 상업 프로모션", "레저·관광 이벤트"]
-- [2026-W37 추석 직전] → ["명절 기념·공공 홍보", "추석 상업 프로모션", "외식·여행 행사"]
-- [2026-W50 크리스마스·연말] → ["연말 공공·사회 캠페인", "홀리데이 상업 프로모션", "문화·엔터 행사"]
-- [2026-W05 설날 직전] → ["명절 공공 안내", "설 상업 프로모션", "신학기·교육 홍보"]
+Few-shot (참고만, 신호에 맞게 새로 쓸 것, 복사 금지):
+- [2026-W29 여름·폭염·장마] → ["폭염기 취약계층 온열질환 예방 수요", "여름철 실내 냉방 건강 리스크 수요", "장마철 도시 침수·안전 정보 수요"]
+- [2026-W33 광복절·8월] → ["광복절 기념 독립운동 역사 교육 수요", "8월 여름휴가철 가족 돌봄 공백 수요", "하반기 채용 시즌 인재 유치 수요"]
+- [2026-W37 추석 직전] → ["추석 명절 이동·교통 혼잡 정보 수요", "명절 선물·소비 트렌드 시각 수요", "가을 전환기 건강·식생활 리스크 수요"]
 
 출력 (JSON만, 설명·텍스트 없이):
 {"conditions": ["라벨1", "라벨2", "라벨3"]}
@@ -100,9 +107,14 @@ def _validate_labels(labels: list[str]) -> tuple[bool, str]:
         if lab in seen:
             return False, "중복"
         seen.add(lab)
+        if not lab.endswith("수요"):
+            return False, "수요접미"
         for bad in _ABSTRACT_SUBSTRINGS:
             if bad in lab:
                 return False, f"추상:{bad}"
+        for broad in _BROAD_LABEL_SUBSTRINGS:
+            if broad in lab:
+                return False, f"넓은라벨:{broad}"
     if _pairwise_max_jaccard(labels) > 0.5:
         return False, "overlap>0.5"
     return True, ""
@@ -165,10 +177,13 @@ def generate_conditions(bundle: dict, run_id: str) -> list[str]:
     for attempt in range(2):
         suffix = ""
         if attempt == 1:
+            abstract = ", ".join(sorted(_ABSTRACT_SUBSTRINGS))
+            broad = ", ".join(sorted(_BROAD_LABEL_SUBSTRINGS))
             suffix = (
                 "\n\n[RETRY] 이전 출력이 규칙 위반이었다. "
-                "서로 다른 수요 영역 3개, 각 라벨 40자 이하, "
-                f"다음 단어를 라벨에 포함하지 마라: {', '.join(sorted(_ABSTRACT_SUBSTRINGS))}. "
+                "서로 다른 niche 수요 라벨 3개, 각 라벨은 반드시 '수요'로 끝낼 것, 40자 이하. "
+                f"포함 금지(추상): {abstract}. "
+                f"포함 금지(넓은 카테고리·결과물 암시): {broad}. "
                 "토큰 겹침이 큰 라벨 금지."
             )
         try:
