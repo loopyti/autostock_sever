@@ -1,7 +1,8 @@
 """
 validate.py: idea card 검증 (warning 중심, hard reject 최소화).
 
-Hard: generic title, buyer 블랙리스트, 빈 필드, used_evidence bundle 미매칭 0건
+Hard: generic title, buyer 블랙리스트, 빈 필드, used_evidence bundle 미매칭 0건,
+     슬롯 primary_keyword 포함·타 슬롯 primary 침범 금지
 Soft: condition 영역 매핑 실패 시 부합 스킵 + 카드 5장 제한, buyer 분포 warning
 """
 from __future__ import annotations
@@ -73,6 +74,28 @@ _JOSA_RE = re.compile(
 
 def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
+def _normalize_slot_keyword(s: str) -> str:
+    """슬롯 primary / source_keywords 비교용 (공백 제거·소문자)."""
+    t = (s or "").strip().lower()
+    return re.sub(r"\s+", "", t)
+
+
+def _dedupe_source_keywords(keywords: list) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for kw in keywords or []:
+        if not isinstance(kw, str):
+            continue
+        k = kw.strip()
+        if not k:
+            continue
+        nk = _normalize_slot_keyword(k)
+        if nk and nk not in seen:
+            seen.add(nk)
+            out.append(k)
+    return out
 
 
 def _normalize_evidence_token(s: str) -> str:
@@ -243,11 +266,55 @@ def _warn_buyer_diversity(ideas: list[dict]) -> None:
         )
 
 
+def _slot_primary_by_id(ideas: list[dict]) -> dict[str, str]:
+    """slot_id → primary_keyword (배치 내 마지막 값)."""
+    out: dict[str, str] = {}
+    for idea in ideas:
+        if not isinstance(idea, dict):
+            continue
+        sid = idea.get("_slot_id")
+        pk = idea.get("_primary_keyword")
+        if isinstance(sid, str) and sid and isinstance(pk, str) and pk.strip():
+            out[sid] = pk.strip()
+    return out
+
+
+def _slot_lock_ok(idea: dict, slot_pk: dict[str, str]) -> bool:
+    """자기 primary가 source_keywords에 있고, 다른 슬롯 primary를 키워드로 끌어오지 않았는지."""
+    self_sid = idea.get("_slot_id")
+    self_pk = idea.get("_primary_keyword")
+    if not self_sid or not self_pk:
+        return True
+    self_norm = _normalize_slot_keyword(self_pk)
+    if not self_norm:
+        return True
+    others_norm = {
+        _normalize_slot_keyword(pk)
+        for sid, pk in slot_pk.items()
+        if sid != self_sid and pk
+    }
+    others_norm.discard("")
+    kws = _dedupe_source_keywords(idea.get("source_keywords") or [])
+    idea["source_keywords"] = kws
+    sk_norms = [_normalize_slot_keyword(k) for k in kws]
+    if self_norm not in sk_norms:
+        logger.debug("슬롯 primary 미포함 reject: slot=%s pk=%r title=%s", self_sid, self_pk, idea.get("idea_title"))
+        return False
+    for nk in sk_norms:
+        if not nk:
+            continue
+        if nk in others_norm and nk != self_norm:
+            logger.debug("타 슬롯 primary 침범 reject: slot=%s nk=%s title=%s", self_sid, nk, idea.get("idea_title"))
+            return False
+    return True
+
+
 def validate_ideas(
     ideas: list[dict],
     bundle: dict | None = None,
 ) -> tuple[list[dict], int]:
     refs = _build_reference_strings(bundle) if bundle else set()
+    slot_pk = _slot_primary_by_id(ideas)
     valid: list[dict] = []
     invalid = 0
 
@@ -279,8 +346,16 @@ def validate_ideas(
             invalid += 1
             continue
 
-        keywords = idea.get("source_keywords") or []
+        keywords = _dedupe_source_keywords(idea.get("source_keywords") or [])
+        idea["source_keywords"] = keywords
         if len(keywords) < 2:
+            invalid += 1
+            continue
+
+        if idea.get("_demand_family") in _VALID_INDUSTRY:
+            idea["industry"] = idea["_demand_family"]
+
+        if not _slot_lock_ok(idea, slot_pk):
             invalid += 1
             continue
 

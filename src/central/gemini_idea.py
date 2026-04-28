@@ -1,10 +1,8 @@
 """
-gemini_idea.py: fast 모델(GEMINI_FAST_MODEL)로 condition별 idea card 생성.
+gemini_idea.py: fast 모델(GEMINI_FAST_MODEL)로 고정 슬롯별 idea card 생성.
 grounding은 호출하지 않는다 (evidence 단계에서만 수행).
 
-[Phase B] 2단계 추론 강제:
-  Step1 — thinking.demand_sources: 이 condition에서 콘텐츠 재료가 필요한 수요처 3~5개 추론
-  Step2 — 추론 근거로 idea_card 작성 (포맷 단어 없이 수요 방향만)
+슬롯당 3~5장: primary_keyword·demand_family(industry)는 코드에서 잠금.
 """
 from __future__ import annotations
 
@@ -19,6 +17,7 @@ from google.genai import types
 
 from central import gemini_limits as gl
 from central.settings import GOOGLE_AI_STUDIO_API_KEY
+from central.slots import GenerationSlot
 
 logger = logging.getLogger(__name__)
 
@@ -33,19 +32,19 @@ _SYSTEM_PROMPT = """너는 스톡 이미지 수요 방향 분석기다.
 - 따라서 이 카드에는 최종 결과물 포맷(포스터/배너/카드뉴스 등)이 들어가서는 안 된다.
 
 ━━━ TASK ━━━
-입력된 evidence bundle(calendar / naver_datalab / pinterest / grounding_evidences)을 분석하고,
-generation condition에 부합하는 "수요 방향 카드"를 생성하라.
+입력된 evidence bundle(JSON)을 분석하고,
+아래 GENERATION SLOT에 부합하는 "수요 방향 카드"만 생성하라.
 
 출력 단계:
-  Step 1 (thinking.demand_sources): 이 condition 안에서 콘텐츠 재료가 필요한 수요처 3~5개를 먼저 추론
+  Step 1 (thinking.demand_sources): 이 슬롯·primary_keyword 안에서 콘텐츠 재료가 필요한 수요처 3~5개를 먼저 추론
   Step 2: Step 1 추론을 근거로 idea_card를 작성
 
 ━━━ STRICT RULES ━━━
 
-[RULE 0] 생성 수량
-- condition에 부합하는 카드를 최대한 많이 생성한다 (목표: 10개)
-- 품질이 담보되는 경우 10개 이상도 허용
-- 수량을 채우기 위해 condition 미부합 카드를 넣는 것은 금지
+[RULE 0] 생성 수량 (슬롯 한정)
+- 이 슬롯에 부합하는 카드만 목표 개수(보통 3~5)만큼 생성한다
+- 슬롯의 primary_keyword를 중심으로 서로 다른 buyer·각도를 가진 카드로 나눈다
+- 다른 슬롯 주제(금지 키워드)로 카드를 채우는 것은 금지
 
 [RULE 1] Evidence 기반 필수
 - used_evidence는 반드시 입력 bundle에 있는 신호·근거만 참조한다
@@ -161,7 +160,15 @@ industry:
 date_specificity:
   high   = 특정 날짜/이벤트에 강하게 묶인 수요 (예: 광복절 당일 전후)
   medium = 시즌 안에서 유효한 수요 (예: 여름방학 기간 전체)
-  low    = 연중 유효하거나 시즌 경계가 모호한 수요"""
+  low    = 연중 유효하거나 시즌 경계가 모호한 수요
+
+[RULE SLOT] (이번 호출에만 적용되는 하드 제약)
+- 모든 카드의 industry 필드는 반드시 GENERATION SLOT의 demand_family 값과 동일하게 출력한다.
+- source_keywords 배열에 반드시 primary_keyword(문자열 그대로)를 포함한다.
+- idea_title의 핵심 주제는 primary_keyword와 직접 연결되어야 하며,
+  forbidden_keywords에 나열된 다른 슬롯의 primary를 제목·이유의 중심 주제로 삼지 않는다.
+- pinterest_visual_slot: 상업·패션·푸드·뷰티 등 스톡 친화 비주얼 수요에 한정한다 (공공 안내물 중심 서술 금지).
+- long_tail_niche_slot: 흔한 대형 키워드만 반복하지 말고, 보조 키워드·틈새 buyer 맥락을 드러낸다."""
 
 _OUTPUT_SCHEMA = """{
   "ideas": [
@@ -208,38 +215,41 @@ def _extract_json(text: str) -> dict:
     raise ValueError("응답에서 JSON을 찾을 수 없습니다.")
 
 
-def _build_prompt(bundle: dict, condition: str, target_count: int) -> str:
-    signals_json = json.dumps(bundle, ensure_ascii=False, indent=2)
-    cond_block = f"""
-━━━ GENERATION CONDITION (이번 호출 한정) ━━━
-라벨: {condition}
-- 이 라벨이 가리키는 niche 수요에 부합하는 카드만 생성한다
-- 이 수요와 무관한 buyer / use_case 조합은 절대 포함하지 않는다
+def _build_prompt_for_slot(slot: GenerationSlot, target_count: int) -> str:
+    signals_json = json.dumps(slot.sub_bundle, ensure_ascii=False, indent=2)
+    forbidden = " | ".join(slot.forbidden_keywords) if slot.forbidden_keywords else "(없음)"
+    slot_block = f"""
+━━━ GENERATION SLOT (이번 호출 한정) ━━━
+slot_id: {slot.slot_id}
+primary_keyword: {slot.primary_keyword}
+demand_family (각 카드 industry 필드에 그대로 사용): {slot.demand_family}
+forbidden_keywords (다른 슬롯의 primary — 중심 주제·제목으로 삼지 말 것): {forbidden}
+
+슬롯별 초점:
+- calendar_event_slot: 날짜·공휴일·기념일에 묶인 수요만.
+- search_trend_slot: 네이버 DataLab 검색 신호 중심 (primary가 검색 축).
+- pinterest_visual_slot: Pinterest 시각·상업 트렌드 중심 (스톡 친화).
+- commercial_evergreen_slot: 시즌 상업·라이프스타일 evergreen (primary가 앵커).
+- long_tail_niche_slot: primary는 보조 축 — 흔한 대형 키만 반복하지 말고 틈새 buyer 맥락을 드러낸다.
 
 ━━━ THINKING FIRST (Step 1 — 반드시 먼저 수행) ━━━
-카드를 작성하기 전에 thinking.demand_sources를 먼저 채워라:
+thinking.demand_sources를 먼저 채워라:
 [수요처] → [이 시기 이유] → [어떤 토픽 콘텐츠 재료가 필요한가]
-예: 학교 교사 → 8.15 계기교육 ppt 제작 → 독립운동 인물·태극기·3.1운동 이미지
 이 추론이 idea_card의 buyer·use_case·source_keywords의 근거가 된다.
 
 ━━━ SELF-CHECK (Step 2 출력 직전 반드시 수행) ━━━
 각 카드를 JSON에 넣기 전 아래를 순서대로 점검하라:
 1. thinking.demand_sources에 수요처 추론이 3개 이상 있는가?
-   → 없으면 추론 후 추가
 2. idea_title / use_case에 포맷 단어(포스터/배너/카드뉴스/안내물/홍보물/현수막/전단/banner/poster/flyer/notice)가 있는가?
-   → 있으면 수요 상황 이름·활용 맥락으로 교체
 3. buyer가 콤마로 구분된 3개 이상인가?
-   → 부족하면 Step 1 추론에서 추가 발굴
-4. source_keywords가 5개 이상인가?
-   → 부족하면 토픽 확장 키워드 추가
-5. asset_hints에 구체 객체·액션 묘사가 있는가?
-   → 있으면 추상 키워드로 교체
-6. used_evidence의 각 항목(keyword/title/url)이 입력 bundle에 실제로 존재하는가?
-   → 없으면 실제 bundle 신호로 교체하거나 항목 제거
-7. 목표 {target_count}개보다 적더라도 condition 미부합 카드는 포함하지 않는다 (품질 우선)
+4. source_keywords가 5개 이상이며 primary_keyword \"{slot.primary_keyword}\" 문자열을 포함하는가?
+5. industry가 demand_family \"{slot.demand_family}\" 와 정확히 같은가?
+6. asset_hints에 구체 객체·액션 묘사가 있는가?
+7. used_evidence의 각 항목이 입력 bundle JSON에 실제로 존재하는가?
+8. 목표 약 {target_count}개. 슬롯·primary_keyword와 무관한 카드는 넣지 않는다.
 """
     return (
-        f"{_SYSTEM_PROMPT}\n\n{cond_block}\n"
+        f"{_SYSTEM_PROMPT}\n\n{slot_block}\n"
         f"---\nEVIDENCE BUNDLE JSON\n{signals_json}\n\n"
         f"---\nOUTPUT JSON SCHEMA (이 스키마로만 출력)\n{_OUTPUT_SCHEMA}"
     )
@@ -280,15 +290,17 @@ def _call_fast(client: genai.Client, prompt: str) -> str:
 def generate_idea_cards(
     bundle: dict,
     run_id: str,
-    condition: str,
-    target_count: int = 10,
+    *,
+    slot: GenerationSlot,
+    target_count: int = 4,
 ) -> tuple[list[dict], list]:
     """
     grounding 미사용. 반환 (ideas, []) — 두 번째는 하위 호환용 빈 리스트.
+    bundle 인자는 하위 호환용으로 유지하며, 프롬프트에는 slot.sub_bundle만 넣는다.
     """
-    _ = run_id
+    _ = bundle, run_id
     client = genai.Client(api_key=GOOGLE_AI_STUDIO_API_KEY)
-    prompt = _build_prompt(bundle, condition=condition, target_count=target_count)
+    prompt = _build_prompt_for_slot(slot, target_count=target_count)
 
     try:
         raw_text = _call_fast(client, prompt)
@@ -296,7 +308,7 @@ def generate_idea_cards(
         ideas = parsed.get("ideas", [])
     except (json.JSONDecodeError, ValueError):
         logger.warning("JSON 파싱 실패 — strict 재시도")
-        ideas = _retry_strict_json(client, bundle, condition, target_count)
+        ideas = _retry_strict_json(client, slot, target_count)
     except Exception as e:
         logger.error("idea 생성 실패: %s", e)
         ideas = []
@@ -306,12 +318,11 @@ def generate_idea_cards(
 
 def _retry_strict_json(
     client: genai.Client,
-    bundle: dict,
-    condition: str,
+    slot: GenerationSlot,
     target_count: int,
 ) -> list[dict]:
     suffix = "\n\n[IMPORTANT] 유효한 JSON만. 마크다운/설명 없이 JSON만."
-    prompt = _build_prompt(bundle, condition, target_count) + suffix
+    prompt = _build_prompt_for_slot(slot, target_count) + suffix
     try:
         raw_text = _call_fast(client, prompt)
         parsed = _extract_json(raw_text)
@@ -325,20 +336,21 @@ def retry_with_quality_suffix(
     bundle: dict,
     run_id: str,
     *,
-    condition: str,
-    target_count: int = 10,
+    slot: GenerationSlot,
+    target_count: int = 4,
 ) -> tuple[list[dict], list]:
-    """valid 부족 시 동일 condition으로 품질 suffix 재시도."""
-    _ = run_id
+    """valid 부족 시 동일 슬롯으로 품질 suffix 재시도."""
+    _ = bundle, run_id
     client = genai.Client(api_key=GOOGLE_AI_STUDIO_API_KEY)
     quality_suffix = (
         f"\n\n[QUALITY RETRY] 이전 생성 결과가 기준 미달이었다."
-        f" condition={condition!r} niche 수요에 부합하는 카드만 다시 생성하라."
+        f" slot_id={slot.slot_id!r}, primary_keyword={slot.primary_keyword!r}에만 부합하는 카드만."
         f" idea_title/use_case에 포맷 단어(포스터/배너/카드뉴스/안내물/현수막/banner/poster/flyer/notice) 절대 금지."
-        f" buyer는 3개 이상 콤마 구분, source_keywords는 5개 이상."
-        f" used_evidence는 bundle에 실제 있는 신호만."
+        f" buyer 3개 이상, source_keywords 5개 이상에 primary_keyword 포함."
+        f" industry는 반드시 {slot.demand_family!r}."
+        f" used_evidence는 bundle JSON에 실제 있는 신호만."
     )
-    prompt = _build_prompt(bundle, condition, target_count) + quality_suffix
+    prompt = _build_prompt_for_slot(slot, target_count) + quality_suffix
     try:
         raw_text = _call_fast(client, prompt)
         parsed = _extract_json(raw_text)

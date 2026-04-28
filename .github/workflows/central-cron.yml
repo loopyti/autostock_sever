@@ -26,18 +26,21 @@ jobs:
   generate-idea-cards:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v4
 
+      # 액션은 풀 버전 태그로 고정 (메이저만 지정 시 "Unable to resolve action" 방지)
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@v7.6.0
         with:
           version: "latest"
 
       - name: Set up Python
-        uses: actions/setup-python@v6.2.0
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -59,21 +62,25 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ADMIN_CHAT_IDS: ${{ secrets.TELEGRAM_ADMIN_CHAT_IDS }}
         run: |
-          MARKET="${{ github.event.inputs.market || 'KR' }}"
+          set -euo pipefail
+          # schedule 트리거에는 workflow_dispatch inputs 가 비어 있음
+          MARKET="${{ github.event.inputs.market }}"
           TARGET_WEEK="${{ github.event.inputs.target_week }}"
-          FORCE="${{ github.event.inputs.force || 'false' }}"
+          FORCE="${{ github.event.inputs.force }}"
+          MARKET="${MARKET:-KR}"
+          FORCE="${FORCE:-false}"
 
-          ARGS="--market $MARKET"
+          ARGS="--market ${MARKET}"
 
-          if [ -n "$TARGET_WEEK" ]; then
-            ARGS="$ARGS --target-week $TARGET_WEEK"
+          if [ -n "${TARGET_WEEK}" ]; then
+            ARGS="${ARGS} --target-week ${TARGET_WEEK}"
           fi
 
-          if [ "$FORCE" = "true" ]; then
-            ARGS="$ARGS --force"
+          if [ "${FORCE}" = "true" ]; then
+            ARGS="${ARGS} --force"
           fi
 
-          uv run python -m central.run $ARGS
+          uv run python -m central.run ${ARGS}
 
       - name: Notify on failure
         if: failure()

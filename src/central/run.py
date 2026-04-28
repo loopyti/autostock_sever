@@ -1,6 +1,6 @@
 """
 central/run.py: CLI 진입점 + 오케스트레이터.
-collect → bundle → grounding(1회) → conditions(3) → idea×3(fast) → enrich → validate → (fallback) → save
+collect → bundle → grounding(1회) → slots(5) → idea×5(fast) → enrich → validate → (fallback) → save
 """
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ from central.collectors import naver as naver_collector
 from central.collectors import pinterest as pin_collector
 from central import evidence as ev_module
 from central import grounding as grounding_module
-from central import conditions as conditions_module
 from central import gemini_idea
+from central import slots as slots_module
 from central import enrich as enrich_module
 from central import validate as validate_module
 from central import fallback as fallback_module
@@ -120,22 +120,25 @@ def run_pipeline(
         logger.info("5/8 evidence grounding 1회...")
         bundle = grounding_module.enrich_with_grounding(bundle, run_id)
 
-        # ── 4. generation conditions (정확히 3개) ─────────────────────────────
-        logger.info("6/8 generation conditions...")
-        conditions = conditions_module.generate_conditions(bundle, run_id)
-        logger.info("   → conditions %s", conditions)
+        # ── 4. 고정 5 슬롯 (primary_keyword / industry 잠금) ─────────────────────
+        logger.info("6/8 generation slots (5)...")
+        gen_slots = slots_module.assign_slots(bundle)
+        logger.info("   → slots %s", [f"{s.slot_id}:{s.primary_keyword}" for s in gen_slots])
 
-        # ── 5. condition별 idea (fast, grounding OFF) ─────────────────────────
-        logger.info("7/8 Gemini idea (fast, per-condition)...")
+        # ── 5. 슬롯별 idea (fast, grounding OFF) ───────────────────────────────
+        logger.info("7/8 Gemini idea (fast, per-slot)...")
         raw_ideas: list[dict] = []
-        for cond in conditions:
+        for slot in gen_slots:
             ideas, _ = gemini_idea.generate_idea_cards(
-                bundle, run_id, condition=cond,
+                bundle, run_id, slot=slot, target_count=4,
             )
             for it in ideas:
-                it["_condition"] = cond
+                it["_slot_id"] = slot.slot_id
+                it["_primary_keyword"] = slot.primary_keyword
+                it["_demand_family"] = slot.demand_family
+                it["_condition"] = f"{slot.slot_id}|{slot.primary_keyword}"
             raw_ideas.extend(ideas)
-        logger.info("   → raw %d개 카드 (conditions=%d)", len(raw_ideas), len(conditions))
+        logger.info("   → raw %d개 카드 (slots=%d)", len(raw_ideas), len(gen_slots))
 
         # ── 6. enrich ─────────────────────────────────────────────────────────
         enriched = enrich_module.enrich(raw_ideas, target_date)
@@ -144,18 +147,26 @@ def run_pipeline(
         valid, invalid_count = validate_module.validate_ideas(enriched, bundle=bundle)
         logger.info("   → valid %d개 / invalid %d개", len(valid), invalid_count)
 
-        # ── 7-1. 품질 재시도 (valid < 5 or valid_ratio < 0.4) ──────────────────
+        # ── 7-1. 품질 재시도 (valid < 8 or valid_ratio < 0.35) ──────────────────
         valid_ratio = len(valid) / max(len(raw_ideas), 1)
-        if len(valid) < 5 or valid_ratio < 0.4:
+        if len(valid) < 8 or valid_ratio < 0.35:
             logger.warning(
-                "valid 비율 낮음 (%d/%d = %.0f%%) → 품질 suffix 재시도 (condition=%r)",
-                len(valid), len(raw_ideas), valid_ratio * 100, conditions[0] if conditions else "",
+                "valid 비율 낮음 (%d/%d = %.0f%%) → 품질 suffix 재시도 (slot=%r)",
+                len(valid), len(raw_ideas), valid_ratio * 100,
+                gen_slots[0].slot_id if gen_slots else "",
             )
-            retry_ideas, _ = gemini_idea.retry_with_quality_suffix(
-                bundle, run_id, condition=conditions[0] if conditions else "", target_count=10,
-            )
-            for it in retry_ideas:
-                it["_condition"] = conditions[0] if conditions else ""
+            if gen_slots:
+                retry_ideas, _ = gemini_idea.retry_with_quality_suffix(
+                    bundle, run_id, slot=gen_slots[0], target_count=4,
+                )
+                s0 = gen_slots[0]
+                for it in retry_ideas:
+                    it["_slot_id"] = s0.slot_id
+                    it["_primary_keyword"] = s0.primary_keyword
+                    it["_demand_family"] = s0.demand_family
+                    it["_condition"] = f"{s0.slot_id}|{s0.primary_keyword}"
+            else:
+                retry_ideas = []
             retry_enriched = enrich_module.enrich(retry_ideas, target_date)
             retry_valid, retry_invalid = validate_module.validate_ideas(retry_enriched, bundle=bundle)
             logger.info("   → 재시도 valid %d개 / invalid %d개", len(retry_valid), retry_invalid)
@@ -194,6 +205,9 @@ def run_pipeline(
         logger.info("8/8 idea_cards 저장...")
         for card in valid:
             card.pop("_condition", None)
+            card.pop("_slot_id", None)
+            card.pop("_primary_keyword", None)
+            card.pop("_demand_family", None)
             card.pop("thinking", None)
 
         # 메인 카드 저장

@@ -1,0 +1,41 @@
+# 월별 상업 evergreen 시드 (commercial_evergreen_slot). keyword + industry(idea_cards.industry).
+months:
+  1:
+    - { keyword: "신년 목표·습관", industry: "other" }
+    - { keyword: "겨울 세일", industry: "ecommerce" }
+    - { keyword: "연말정산·절세", industry: "finance" }
+  2:
+    - { keyword: "발렌타인·선물", industry: "ecommerce" }
+    - { keyword: "입학·졸업 시즌", industry: "education" }
+  3:
+    - { keyword: "봄맞이 리프레시", industry: "beauty" }
+    - { keyword: "학기 초 학습·교재", industry: "education" }
+  4:
+    - { keyword: "봄 나들이·여행", industry: "travel" }
+    - { keyword: "피크닉·야외", industry: "sports_outdoor" }
+  5:
+    - { keyword: "가정의 달·선물", industry: "ecommerce" }
+    - { keyword: "어린이날·키즈", industry: "entertainment" }
+  6:
+    - { keyword: "여름휴가·예약", industry: "travel" }
+    - { keyword: "수능·입시", industry: "education" }
+  7:
+    - { keyword: "여름 세일·할인", industry: "ecommerce" }
+    - { keyword: "폭염·실내 여가", industry: "entertainment" }
+  8:
+    - { keyword: "여름 세일·시즌오프", industry: "ecommerce" }
+    - { keyword: "재고 정리·클리어런스", industry: "ecommerce" }
+    - { keyword: "여름방학·학습", industry: "education" }
+    - { keyword: "휴가·레저", industry: "travel" }
+  9:
+    - { keyword: "추석 준비·선물", industry: "ecommerce" }
+    - { keyword: "가을 패션·코디", industry: "fashion" }
+  10:
+    - { keyword: "할로윈·시즌 이벤트", industry: "entertainment" }
+    - { keyword: "가을 여행·단풍", industry: "travel" }
+  11:
+    - { keyword: "블랙프라이데이·연말 쇼핑", industry: "ecommerce" }
+    - { keyword: "연말 파티·모임", industry: "food_beverage" }
+  12:
+    - { keyword: "연말 선물·패키지", industry: "ecommerce" }
+    - { keyword: "겨울 방한·웰니스", industry: "healthcare" }

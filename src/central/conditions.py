@@ -1,4 +1,4 @@
-"""conditions.py: fast 모델로 generation condition 정확히 3개 생성."""
+"""conditions.py: (레거시) fast 모델로 generation condition 3개 생성 — run 파이프라인에서는 미사용. 슬롯은 central.slots.assign_slots 사용."""
 from __future__ import annotations
 
 import json

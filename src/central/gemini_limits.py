@@ -1,6 +1,6 @@
 """
 Gemini API RPM/RPD 공유 한도 (grounding 체인 vs fast 단일 모델).
-grounding.py / conditions.py / gemini_idea.py에서 공통 사용.
+grounding.py / conditions.py(레거시) / gemini_idea.py / slots.py에서 공통 사용.
 """
 from __future__ import annotations
 
